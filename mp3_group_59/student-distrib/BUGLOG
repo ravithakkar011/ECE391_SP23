@@ -1,0 +1,139 @@
+Checkpoint 1:
+
+1. Broken test environment: (FIXED 23:00 3/20/23) Ravi experienced a broken test machine in the beginning of working on the machine problem.
+the exact problem was a damaged filesystem which didn't allow for logging in using our netid passwords or even accessing any files without 
+logging into the machine as a root user and trying to repair the damaged filesystem manually. Ravi instead just followed the steps in the mp0
+documentation and remade the test machine. The building of the kernel failed once so it took quite a bit of time to get the test machine working 
+and was definetly a setback for the progress of our mp.
+
+2. Segmentation Fault: (FIXED 16:40 3/21/23) Ravi was continuously experiencing a segmentation fault from one of the assembly commands from the provided code,
+but since he was running the test machine using 'run' or 'r' instead of 'c', the segmentation fault occurs. After asking a CA as to why there was a segfault every
+time he booted, it turned out that all you had to do was do 'c' instead of 'r'.
+
+3. Inversed rtc arguments (FIXED 21:00 3/20/23) Ravi experienced some issues with the rtc.c file because he followed the convention given in the one website on the powerpoint
+given to us in piazza. the problem was that he reversed the order for the arguments for outb. Since rtc wasn't working but it's not an easy catch, it took a while to find
+this bug and it cost a sizable amount of time to fix this error. The solution was found by examining very carefully the parameters where outb is defined in lib.h
+
+4. The idt[] & SET_IDT_ENTRY() not recognized by compiler in IDT.c
+Location: IDT.c : init_IDT()
+Solution: add #ifndef ASM to protect declarations
+
+5. Compiler not recognizing subroutines for keyboard and rtc in assembly_linkage.S
+Location: IDT.c : init_IDT() : SET_IDT_ENTRY(..., keyboard_asm):
+Solution: put extern functions in assembly_linkage.S for keyboard_asm & rtc_asm
+
+6. Compiler not recognizing exception functions
+Location: IDT.c : init_IDT()
+Solution: I was including the x86.h file with the function headers in the assembly_linkage.S file which the linker couldn't read, so I included it in the assembly_linkage.h file instead
+
+7. Linkage errors: After compiling all of our code for the CP1 demo, we experienced linkage errors due to the addidion of inline assembly code in the assembly linkage. 
+Location: assembly_linkage.S
+Solution: There was an extra include to a C file added to the file. After removing that, we got rid of the problem with likage errors.
+
+8. idt[RTC_VECTOR].present accidentally set to 0. This was a very small bug that took a while to figure out because there could be many reasons why RTC wouldn't work. 
+Location: IDT.c
+Solution: Setting idt[RTC_VECTOR].present = 1; fixed this issue within the init_idt funtion.
+
+9. Forgot to popl $irq in the link function: Our link function pushes irq but we forgot to pop irq as well. This meant that none of our interrupts were being handled properly. 
+Location: assembly_linkage.S
+Solution: We had to pop the value of irq into another register so we popped irq into eax and our stack was properly working so we were able to handle interrupts.
+
+Checkpoint 2:
+
+1. Terminal read wasn't clearing the keyboard buffer for the test: For our terminal test, we needed to clear the keyboard buffer since we were looping the terminal read and writes but the problem was that the keyboard buffer wasn't being cleared since in our implementation, we have a function for clearing the keyboard buffer through a call in keyboard.c. Further, the function was also declared and defined in the keyboard files. For the purpose of testing, I added a call to clear the keyboard buffer within the read function and that
+ worked.
+ Location: terminal_driver.c
+
+
+2. Tests.c was having a problem completely writing into keyboard_buffer: when trying to test the terminal read and write functions for the driver, since our terminal_read is trying
+to read directly from the keyboard buffer we wanted to directly write into it to test it out. We tried for a very long time to make this work but we found a good method to actually 
+do this after countless tries. What we did was just index into the keyboard_buffer and iterate through the index with a different character to load 'hello' into the keyboard buffer.
+This worked because indexing into the buffer was a simpler process then trying to rewrite all of the contents in the buffer.
+Location: tests.c
+
+3. When CTRL-L was pressed after backspace was used & new characters were written, the output would have a space between the last non-overwritten chracter and the new characters written (ex: jumanaschmidt -> jumanaschmi -> jumanaschmiju -> CTRL-L -> jumanaschmi ju)
+Location: keyboard.c : keyboard_handler() : case BACKSPACE : Line 152
+Solution: I knew it was an issue with my keyboard buffer because I output the whole thing when CTRL-L is called. I then thought it was an indexing issue, which was technically true, but it was really because I was calling my print_to_screen function which adds the inputted character to the buffer. I really needed to just put a space in the previous video memory, so I just used putc(SPACE_KEY); in its place.
+
+4. When CTRL-L was pressed, the output buffer would cut off the last letter (ex: jumanaschmidt -> jumanaschmid).
+Location: keyboard.c : keyboard_handler() : case LETTER_L_KEYCODE : Line 176
+Solution: There was an indexing error in my for loop that ouputs the saved keyboard buffer to the screen after the screen is cleared. Instead of for(i = 0; i < num_chars_typed; i++){, I needed for(i = 0; i <= num_chars_typed; i++){ to output that last letter.
+
+5. When CTRL-L was pressed with a buffer that needed two lines of output, the cursor wouldd reset to the wrong place (ie. end of first line).
+Location: keyboard.c : keyboard_handler() : case LETTER_L_KEYCODE : Line 180
+Solution: I originally just had set_cursor(num_chars_typed, 0); to update the cursor, but I realized I needed to accound for this case. So, I just added an if statement to check if the number of characters written so far (num_chars_typed) was over the limit that could be written to one line (80), and if it was I did set_cursor(num_chars_typed - MAX_CHARS_LINE, 1); instead, where the cursor's y_coordinate would be 1 for the second line (it's always 1 because the keyboard buffer can't exceed 128 and for more than two lines of output you would need a size more than 160 characters) and the x coordinate would be calculated by subtracting 80 from the number of characters written so far.
+
+6. Filesystem read_data() wasn't outputting anything so we debugged it right in kernel, checked the first data block of dentry 10 (small file that takes up only one block) to see if anything was there, and then realized it was an issue with the read_data() for sure. So we saw we weren't indexing the inode or passing the inode index into the inodes object.
+
+Checkpoint 3:
+
+1. When testing terminal_read(), we tried printing the output buffer when enter was hit, but nothing was outputted. Through GDB, we saw that the beginning of the keyboard buffer had zeros, so that was why. We realized that we were incrementing num_bytes_typed before adding to the buffer, which was wrong.
+
+
+2. Ravi Thakkar
+File: IDT.c
+Bug: The DPL bits were improperly set for the system call interrupt gate descriptor.
+The problem was due to the extra line of code that set the dpl to 0 after I set the dpl to 3
+for the system calls within an if statement, so within init_idt, the DPL for system calls was 3
+and then immediately set to be 0 due to this extra line of code, which means that user level
+code cannot use int 0x80, like the programs we are running for this mp.
+Fix: This was a relatively easy fix but one that was hidden in plain sight. I just got rid of the extra 
+dpl setting line because it's basically useless since we aren't using all of the interrupt table
+entries. I also reorganized the code in init_idt to make it easier later if such a change needs 
+to be made, so it doesn't mess up the rest of the interrupts that we've already set bits for.
+
+3. Ravi Thakkar
+File: syscall.C
+Bug: The assembly code for the execute function was not properly written, resulting in a 
+page fault when trying to execute a program. This bug was excpetionally hard to debug
+because it's very difficult to debug assembly code, and the page fault was happening in
+the user level. 
+Fix: I had to use GDB to debug the assembly code, and I found that the problem was that
+the assembly code was not properly setting up the stack and pushing the arguments onto
+the stack in the correct order. I had to change the order of the arguments and the way
+that the stack was set up to fix this bug. It also required me to change the way that
+I was setting up the inline assembly code a few times to get it to properly work.
+
+4. Ravi Thakkar
+File: syscall.C
+Bug: The assembly code for the halt function was not properly written, resulting in a
+page fault when trying to halt a program. Again, this bug was exceptionally hard to debug
+because it's very difficult to debug assembly code, and the page fault was happening somewhere within
+the inline assembly code for the halt function. I originally thought that the problem was
+in the inline assembly code, but it turned out that the problem was in the C code that
+was calling the paging init so that I could map the physical memory of the parent
+process to the virtual memory in the user level. Whenever my parent process was 0, which
+is the shell, it would try to actually write into the page allocated for the kernel memory because 
+my function was 8MB + (4MB * (parent_pid - 1)) instead of 8MB + (4MB * parent_pid).
+Fix: I just added 1 to the parent_pid so that it wouldnt result in a page fault.
+
+Checkpoint 4:
+
+1. Ravi Thakkar 
+File: syscall.C
+Bug: pid and parent pid was being overwritten with a super large value. This was happening in the 
+halt function so that meant that when returning to the parent process, or running execute again,
+it would try to access some absurd pid value and obviously fail due to a page fault, since my pid value
+dictates accessing the PCB struct in memory. 
+Fix: I had initialized the pid and parent pid to be -1, but I originally had the variable type as an
+unsigned int, which was causing the problem. I changed the variable type to be an int and the problem
+was fixed. I also changed the variable type of the parent pid to be an int as well, since it was
+originally an unsigned int as well. 
+
+Checkpoint 5:
+
+1. Ravi Thakkar
+File: syscall.c - system_execute - extracting arguments
+Bug: command "cat verylongtextwithverylongname.tx" was not executing due to the argument being truncated
+by 4 characters. 
+Fix: I noticed that the argument is being truncated by exactly 4 characters. since "verylongtextwithverylongname.tx" 
+is 32 characters and "cat " is 4 characters, I realized that we were assuming that the maximum size of 
+a command from execute could only be 32 characters, which was an incorrect assumption. Instead, I 
+extended the size of our buffers and some logic in our for  loops and then we were able to run the command.
+
+2. Jumana Schmidt
+File: terminal_driver.c - terminal_init
+Bug: When switching to a different terminal after the first one boots, the keyboard input would stop working, and
+through GDB, we realized it would get stuck in terminal_read, waiting for an end of interrupt signal.
+Fix: Adding send_eoi(keyboard_IRQ) before the system_execute was called allowed for keyboard interrupts during execution.
+

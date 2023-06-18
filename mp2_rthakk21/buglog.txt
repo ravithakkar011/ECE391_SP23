@@ -1,0 +1,13 @@
+Bug 1: Problems with Acknowledge Flag (3-6, Unsolved)
+	-The handler wasn't properly getting an acknowledge response,
+	so I have a spamming problem with the set_led function. This
+	gave me many errors throughout developing the rest of the functionality.
+	A different possibility for its cause would be that my logic in the set_led function wasn't correct and lead to
+	improper acknowledgement, which in turn lagged my timer, which is my next bug.
+Bug 2: Laggy timer on Tux (3-6, Unsolved)
+	-The LED displays are behind many seconds compared to the status bar. This is likely a direct cause of the first bug
+	because of the spamming problem. 
+Bug 3: Pallete random not working  (3-4, Solved)
+	-For some reason I was having an issue with the rand() function in the two pallete functions I created for the maze walls
+	and the redrawing of the center of the player. This took me a while to solve but the solution was simple: I forgot to import
+	<stdlib.h> into the file which solved the problem.
